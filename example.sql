@@ -25,4 +25,12 @@ SELECT mongo_find(
     'file',
     'images',
     '{"name":"name1"}'
-)->'postgresql'
+)->'postgresql';
+
+SELECT mongo_save(
+    'mongodb://127.0.0.1:27017',
+    'file',
+    'images',
+    (SELECT row_to_json(users) FROM users WHERE id=1),
+    '{"id":1}'
+);

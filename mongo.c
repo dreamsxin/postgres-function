@@ -94,6 +94,7 @@ mongo_save(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errmsg("%s", error.message)));
 		goto end;
 	}
+
 	query = bson_new_from_json((const uint8_t *)query_data, strlen(query_data), &error);
 	if (!query) {
 		ereport(ERROR, (errmsg("%s", error.message)));
@@ -113,7 +114,6 @@ mongo_save(PG_FUNCTION_ARGS)
 		} else {
 			update = bson_new();
 			BSON_APPEND_DOCUMENT(update, "$set", document);
-
 			if (!mongoc_collection_update(collection, MONGOC_UPDATE_NONE, query, update, NULL, &error)) {
 				ereport(ERROR, (errmsg("%s", error.message)));
 			} else {
@@ -124,7 +124,7 @@ mongo_save(PG_FUNCTION_ARGS)
 		}
 	}
 
-	if (!mongoc_collection_insert (collection, MONGOC_INSERT_NONE, document, NULL, &error)) {
+	if (!mongoc_collection_insert(collection, MONGOC_INSERT_NONE, document, NULL, &error)) {
 		ereport(ERROR, (errmsg("%s", error.message)));
 	} else {
 		ret = true;
