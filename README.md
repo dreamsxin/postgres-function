@@ -12,16 +12,16 @@ CREATE EXTENSION mongo;
 
 SELECT mongo_save(
     'mongodb://127.0.0.1:27017',
-    'file',
-    'images',
-    '{"postgresql":"fine"}',
-    '{"name":"name1"}'
+    'database',
+    'collection',
+    '{"field":"value"}',
+    '{"query filed":"value"}'
 );
 
 SELECT mongo_find(
     'mongodb://127.0.0.1:27017',
-    'file',
-    'images',
-    '{"name":"name1"}'
+    'database',
+    'collection',
+    '{"query field":"value"}'
 )->'postgresql'
 ```
