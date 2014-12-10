@@ -5,7 +5,12 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION mongo" to load this file. \quit
 
-CREATE FUNCTION mongo_save()
+CREATE FUNCTION mongo_find(_uri character varying, _database character varying, _collection character varying, _query json)
+RETURNS json
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT;
+
+CREATE FUNCTION mongo_save(_uri character varying, _database character varying, _collection character varying, _data json, _query json DEFAULT NULL)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;
