@@ -38,7 +38,7 @@ mongo_find(PG_FUNCTION_ARGS)
 
 	query = bson_new();
 	if (!bson_init_from_json(query, query_data, strlen(query_data), &error)) {
-		ereport(WARNING, (errmsg("%s, %s", error.message, query_data)));
+		ereport(ERROR, (errmsg("%s", error.message)));
 		goto end;
 	}
 
@@ -74,15 +74,16 @@ end:
 Datum
 mongo_save(PG_FUNCTION_ARGS)
 {
-	char const* uri = PG_GETARG_CSTRING(0);
-	char const* dbname = PG_GETARG_CSTRING(1);
-	char const* collectionname = PG_GETARG_CSTRING(2);
-	char const* data = PG_GETARG_CSTRING(3);
-	char const* query_data = PG_GETARG_CSTRING(4);
+	char const* uri = GET_STR(PG_GETARG_CSTRING(0));
+	char const* dbname = GET_STR(PG_GETARG_CSTRING(1));
+	char const* collectionname = GET_STR(PG_GETARG_CSTRING(2));
+	char const* data = GET_STR(PG_GETARG_CSTRING(3));
+	char const* query_data = GET_STR(PG_GETARG_CSTRING(4));
 	mongoc_collection_t *collection = NULL;
 	mongoc_client_t *client = NULL;
 	mongoc_cursor_t *cursor = NULL;
 	bson_t *document = NULL;
+	bson_t *update = NULL;
 	bson_t *query = NULL;
 	const bson_t *doc = NULL;
 	bson_error_t error;
@@ -90,12 +91,12 @@ mongo_save(PG_FUNCTION_ARGS)
 
 	document = bson_new_from_json((const uint8_t *)data, strlen(data), &error);
 	if (!document) {
-		ereport(WARNING, (errmsg("%s", error.message)));
+		ereport(ERROR, (errmsg("%s", error.message)));
 		goto end;
 	}
 	query = bson_new_from_json((const uint8_t *)query_data, strlen(query_data), &error);
 	if (!query) {
-		ereport(WARNING, (errmsg("%s", error.message)));
+		ereport(ERROR, (errmsg("%s", error.message)));
 		goto end;
 	}
 
@@ -103,15 +104,18 @@ mongo_save(PG_FUNCTION_ARGS)
     collection = mongoc_client_get_collection (client, dbname, collectionname);
 
 	if (!bson_empty(query)) {
-		cursor = mongoc_collection_find (collection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+		cursor = mongoc_collection_find(collection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
 		if (!mongoc_cursor_next(cursor, &doc)) {
 			if (mongoc_cursor_error(cursor, &error)) {
 				ereport(WARNING, (errmsg("%s", error.message)));
 				goto end;
 			}
+		} else {
+			update = bson_new();
+			BSON_APPEND_DOCUMENT(update, "$set", document);
 
-			if (!mongoc_collection_update(collection, MONGOC_UPDATE_NONE, query, document, NULL, &error)) {
-				ereport(WARNING, (errmsg("%s", error.message)));
+			if (!mongoc_collection_update(collection, MONGOC_UPDATE_NONE, query, update, NULL, &error)) {
+				ereport(ERROR, (errmsg("%s", error.message)));
 			} else {
 				ret = true;
 			}
@@ -121,7 +125,7 @@ mongo_save(PG_FUNCTION_ARGS)
 	}
 
 	if (!mongoc_collection_insert (collection, MONGOC_INSERT_NONE, document, NULL, &error)) {
-		ereport(WARNING, (errmsg("%s", error.message)));
+		ereport(ERROR, (errmsg("%s", error.message)));
 	} else {
 		ret = true;
 	}
@@ -131,6 +135,8 @@ end:
         bson_destroy (document);
     if (query)
         bson_destroy (query);
+    if (update)
+        bson_destroy (update);
 
     if (cursor)
 		mongoc_cursor_destroy (cursor);
