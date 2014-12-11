@@ -36,4 +36,11 @@ SELECT mongo_save(
     (SELECT row_to_json(t) FROM (SELECT id as user_id, phone FROM users WHERE id=1) t),
     '{"user_id":1}'
 );
+
+SELECT * FROM mongo_find_all(
+    'mongodb://127.0.0.1:27017',
+    'database',
+    'collection',
+    '{}'
+);
 ```

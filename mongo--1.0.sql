@@ -15,7 +15,7 @@ RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION mongo_find_all(_uri character varying, _database character varying, _collection character varying, _query json)
-RETURNS SETOF json
+CREATE FUNCTION mongo_find_all(IN _uri character varying, IN _database character varying, IN _collection character varying, IN _query json, OUT id integer, OUT data json)
+RETURNS SETOF RECORD
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;

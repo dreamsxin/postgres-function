@@ -151,8 +151,8 @@ mongo_find_all(PG_FUNCTION_ARGS)
 {
     FuncCallContext *funcctx;
 	Datum result;
-	Datum values[1];
-	bool nulls[1];
+	Datum values[2];
+	bool nulls[2];
 	HeapTuple tuple;
 	MemoryContext oldcontext;
 	TupleDesc tupledesc;
@@ -162,6 +162,7 @@ mongo_find_all(PG_FUNCTION_ARGS)
 	mongoc_cursor_t *cursor = NULL;
 	bson_t *query = NULL;
 	const bson_t *doc = NULL;
+	bson_iter_t iter;
 	bson_error_t error;
 	char const *uri, *dbname, *collectionname, *query_data;
 	char *data = NULL, *str;
@@ -192,8 +193,9 @@ mongo_find_all(PG_FUNCTION_ARGS)
 		mongo_context->query = query;
 		mongo_context->cursor = cursor;
 
-        tupledesc = CreateTemplateTupleDesc(1, false);                
-        TupleDescInitEntry(tupledesc, (AttrNumber) 1, "json", JSONOID, -1, 0);
+		if (get_call_result_type(fcinfo, NULL, &tupledesc) != TYPEFUNC_COMPOSITE) {
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("function returning record called in context that cannot accept type record")));
+		}
 
 		mongo_context->tupdesc = BlessTupleDesc(tupledesc);
 
@@ -211,9 +213,18 @@ mongo_find_all(PG_FUNCTION_ARGS)
 		strncpy(data, str, len);
 		bson_free(str);
 
-		values[0] = PointerGetDatum(cstring_to_text(data));
-		nulls[0] = false;
-			ereport(ERROR, (errmsg("%s", data)));
+		values[0] = PointerGetDatum(0);
+		nulls[0] = true;
+
+		if (bson_iter_init (&iter, doc) && bson_iter_find(&iter, "id")) {
+			if (bson_iter_type(&iter) == BSON_TYPE_INT32) {
+				values[0] = PointerGetDatum(bson_iter_int32(&iter));
+				nulls[0] = false;
+			}
+		}
+
+		values[1] = PointerGetDatum(cstring_to_text(data));
+		nulls[1] = false;
 
 		tuple = heap_form_tuple(mongo_context->tupdesc, values, nulls);                
         result = HeapTupleGetDatum(tuple);                
