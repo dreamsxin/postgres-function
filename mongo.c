@@ -1,5 +1,8 @@
 #include "postgres.h"
+#include "funcapi.h"
 #include "utils/builtins.h"
+#include "catalog/pg_type.h"
+
 #include "mongo.h"
 
 #if PG_VERSION_NUM >= 90300
@@ -10,14 +13,9 @@
 PG_MODULE_MAGIC;
 #endif
 
-#define GET_STR(v)  \
-	DatumGetCString(DirectFunctionCall1(varcharout, PointerGetDatum(v)))
-
-#define SET_STR(v) \
-	DatumGetTextP(DirectFunctionCall1(varcharin, CStringGetDatum(v)))
-
 PG_FUNCTION_INFO_V1(mongo_find);
 PG_FUNCTION_INFO_V1(mongo_save);
+PG_FUNCTION_INFO_V1(mongo_find_all);
 
 Datum
 mongo_find(PG_FUNCTION_ARGS)
@@ -42,10 +40,10 @@ mongo_find(PG_FUNCTION_ARGS)
 		goto end;
 	}
 
-	client = mongoc_client_new (uri);
-	collection = mongoc_client_get_collection (client, dbname, collectionname);
+	client = mongoc_client_new(uri);
+	collection = mongoc_client_get_collection(client, dbname, collectionname);
 
-	cursor = mongoc_collection_find (collection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+	cursor = mongoc_collection_find(collection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
 	if (mongoc_cursor_next(cursor, &doc)) {
 		str = bson_as_json(doc, &len);
 		data = palloc0(len * sizeof(char) + 1);
@@ -55,14 +53,14 @@ mongo_find(PG_FUNCTION_ARGS)
 
 end:
     if (query)
-        bson_destroy (query);
+        bson_destroy(query);
 
     if (cursor)
-		mongoc_cursor_destroy (cursor);
+		mongoc_cursor_destroy(cursor);
     if (collection)
-		mongoc_collection_destroy (collection);
+		mongoc_collection_destroy(collection);
     if (client)
-		mongoc_client_destroy (client);
+		mongoc_client_destroy(client);
 
 	if (data) {
 		PG_RETURN_TEXT_P(SET_STR(data));
@@ -102,7 +100,7 @@ mongo_save(PG_FUNCTION_ARGS)
 	}
 
 	client = mongoc_client_new (uri);
-    collection = mongoc_client_get_collection (client, dbname, collectionname);
+	collection = mongoc_client_get_collection (client, dbname, collectionname);
 
 	if (!bson_empty(query)) {
 		cursor = mongoc_collection_find(collection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
@@ -132,18 +130,104 @@ mongo_save(PG_FUNCTION_ARGS)
 
 end:
     if (document)
-        bson_destroy (document);
+        bson_destroy(document);
     if (query)
-        bson_destroy (query);
+        bson_destroy(query);
     if (update)
-        bson_destroy (update);
+        bson_destroy(update);
 
     if (cursor)
-		mongoc_cursor_destroy (cursor);
+		mongoc_cursor_destroy(cursor);
     if (collection)
-		mongoc_collection_destroy (collection);
+		mongoc_collection_destroy(collection);
     if (client)
-		mongoc_client_destroy (client);
+		mongoc_client_destroy(client);
 
     PG_RETURN_BOOL(ret);
+}
+
+Datum
+mongo_find_all(PG_FUNCTION_ARGS)
+{
+    FuncCallContext *funcctx;
+	Datum result;
+	Datum values[1];
+	bool nulls[1];
+	HeapTuple tuple;
+	MemoryContext oldcontext;
+	TupleDesc tupledesc;
+	MongoContext *mongo_context = NULL;
+	mongoc_collection_t *collection = NULL;
+	mongoc_client_t *client = NULL;
+	mongoc_cursor_t *cursor = NULL;
+	bson_t *query = NULL;
+	const bson_t *doc = NULL;
+	bson_error_t error;
+	char const *uri, *dbname, *collectionname, *query_data;
+	char *data = NULL, *str;
+	size_t len;
+
+    if (SRF_IS_FIRSTCALL()) {
+        funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		uri = GET_STR(PG_GETARG_CSTRING(0));
+		dbname = GET_STR(PG_GETARG_CSTRING(1));
+		collectionname = GET_STR(PG_GETARG_CSTRING(2));
+		query_data = GET_STR(PG_GETARG_CSTRING(3));
+
+
+		query = bson_new();
+		if (!bson_init_from_json(query, query_data, strlen(query_data), &error)) {
+			ereport(ERROR, (errmsg("%s", error.message)));
+		}
+
+		client = mongoc_client_new(uri);
+		collection = mongoc_client_get_collection(client, dbname, collectionname);
+
+		cursor = mongoc_collection_find(collection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+
+		mongo_context = (MongoContext *) palloc0(sizeof(MongoContext));
+		mongo_context->client = client;
+		mongo_context->collection = collection;
+		mongo_context->query = query;
+		mongo_context->cursor = cursor;
+
+        tupledesc = CreateTemplateTupleDesc(1, false);                
+        TupleDescInitEntry(tupledesc, (AttrNumber) 1, "json", JSONOID, -1, 0);
+
+		mongo_context->tupdesc = BlessTupleDesc(tupledesc);
+
+		funcctx->user_fctx = mongo_context;
+
+		MemoryContextSwitchTo(oldcontext);
+    }
+
+	funcctx = SRF_PERCALL_SETUP();
+	mongo_context = funcctx->user_fctx;
+
+    if (mongoc_cursor_next(mongo_context->cursor, &doc)) {
+		str = bson_as_json(doc, &len);
+		data = palloc0(len * sizeof(char) + 1);
+		strncpy(data, str, len);
+		bson_free(str);
+
+		values[0] = PointerGetDatum(cstring_to_text(data));
+		nulls[0] = false;
+			ereport(ERROR, (errmsg("%s", data)));
+
+		tuple = heap_form_tuple(mongo_context->tupdesc, values, nulls);                
+        result = HeapTupleGetDatum(tuple);                
+
+        SRF_RETURN_NEXT(funcctx, result);
+    } else {
+		if (mongo_context) {
+			bson_destroy(mongo_context->query);
+			mongoc_collection_destroy(mongo_context->collection);
+			mongoc_client_destroy(mongo_context->client);
+
+			pfree(mongo_context);
+		}
+
+        SRF_RETURN_DONE(funcctx);
+    }
 }

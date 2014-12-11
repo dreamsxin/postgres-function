@@ -10,7 +10,12 @@ RETURNS json
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION mongo_save(_uri character varying, _database character varying, _collection character varying, _data json, _query json DEFAULT NULL)
+CREATE FUNCTION mongo_save(_uri character varying, _database character varying, _collection character varying, _data json, _query json)
 RETURNS boolean
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT;
+
+CREATE FUNCTION mongo_find_all(_uri character varying, _database character varying, _collection character varying, _query json)
+RETURNS SETOF json
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;

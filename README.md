@@ -5,6 +5,7 @@ postgres-function
 git clone https://github.com/dreamsxin/postgres-function.git
 cd postgres-function
 cd mongo-c-driver-1.0.2
+autoreconf -ivf .
 ./configure && make && sudo make install
 cd ..
 make && sudo make install
@@ -32,7 +33,7 @@ SELECT mongo_save(
     'mongodb://127.0.0.1:27017',
     'database',
     'collection',
-    SELECT row_to_json(t) FROM (SELECT id as user_id, phone FROM users WHERE id=1) t,
+    (SELECT row_to_json(t) FROM (SELECT id as user_id, phone FROM users WHERE id=1) t),
     '{"user_id":1}'
 );
 ```
